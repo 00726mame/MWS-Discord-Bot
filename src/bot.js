@@ -1,5 +1,14 @@
 // Minimal Discord bot to create temporary voice rooms via /room command
+require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, Routes, REST, ChannelType } = require('discord.js');
+
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+
+if (!TOKEN || !CLIENT_ID) {
+  console.error('Missing DISCORD_TOKEN or CLIENT_ID in environment');
+  process.exit(1);
+}
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates], partials: [Partials.Channel] });
 
@@ -87,9 +96,11 @@ client.on('interactionCreate', async (interaction) => {
             const g = interaction.guild;
             const ch = await g.channels.fetch(voice.id).catch(() => null);
             const tc = await g.channels.fetch(text.id).catch(() => null);
+            const cat = await g.channels.fetch(category.id).catch(() => null);
             if (tc) await tc.send('自動削除を実行します（時間切れ）');
             if (ch) await ch.delete('Auto-deleted temporary room');
             if (tc) await tc.delete('Auto-deleted paired text channel');
+            if (cat) await cat.delete('Auto-deleted category');
             // remove from map
             const arr = guildRooms.get(guildId) || [];
             guildRooms.set(guildId, arr.filter(r => r.channelId !== voice.id));
@@ -143,9 +154,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             try {
               const v = await guild.channels.fetch(room.channelId).catch(() => null);
               const t = await guild.channels.fetch(room.textId).catch(() => null);
+              // find category by name
+              const cat = guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name === room.name);
               if (t) await t.send('参加者が0になったためチャネルを削除します');
               if (v) await v.delete('Auto-delete empty VC');
               if (t) await t.delete('Auto-delete paired text channel');
+              if (cat) await cat.delete('Auto-delete empty category');
               // cleanup
               const arr = guildRooms.get(guildId) || [];
               guildRooms.set(guildId, arr.filter(r => r.channelId !== room.channelId));
