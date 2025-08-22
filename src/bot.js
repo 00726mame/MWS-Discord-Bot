@@ -1,5 +1,14 @@
 // Minimal Discord bot to create temporary voice rooms via /room command
+require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, Routes, REST, ChannelType } = require('discord.js');
+
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+
+if (!TOKEN || !CLIENT_ID) {
+  console.error('Missing DISCORD_TOKEN or CLIENT_ID in environment');
+  process.exit(1);
+}
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates], partials: [Partials.Channel] });
 
