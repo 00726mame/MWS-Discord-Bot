@@ -11,7 +11,10 @@ if (!TOKEN || !CLIENT_ID) {
   process.exit(1);
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates], partials: [Partials.Channel] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages],
+  partials: [Partials.Channel]
+});
 
 // In-memory map per guild of created rooms and their timers
 // guildRooms: Map<guildId, Array<{ channelId, textId, creatorId, timeout, idleTimeout, name }>>
@@ -26,6 +29,21 @@ async function registerCommands() {
         { name: 'name', type: 3, description: 'Room name', required: true },
         { name: 'time', type: 4, description: 'Auto-delete after minutes (optional)', required: false },
         { name: 'idle', type: 4, description: 'Auto-delete after X minutes of empty (optional, default 1)', required: false }
+      ]
+    },
+    {
+      name: 'purge',
+      description: 'Delete the latest N messages in a channel',
+      options: [
+        { name: 'channel', type: 7, description: 'Target channel', required: true },
+        { name: 'count', type: 4, description: 'Number of messages to delete (1-1000)', required: true }
+      ]
+    },
+    {
+      name: 'purgeall',
+      description: 'Delete as many messages as possible in a channel',
+      options: [
+        { name: 'channel', type: 7, description: 'Target channel', required: true }
       ]
     }
   ];
@@ -143,6 +161,60 @@ client.on('interactionCreate', async (interaction) => {
     } catch (err) {
       console.error('Failed to create channels', err);
       await interaction.reply({ content: 'チャンネル作成に失敗しました（権限を確認してください）', ephemeral: true });
+    }
+  }
+
+  if (interaction.commandName === 'purge' || interaction.commandName === 'purgeall') {
+    const channel = interaction.options.getChannel('channel');
+    const count = interaction.commandName === 'purge' ? interaction.options.getInteger('count') : null;
+    const isTextChannel = channel?.type === ChannelType.GuildText || channel?.type === ChannelType.GuildAnnouncement;
+
+    if (!channel || !isTextChannel) {
+      await interaction.reply({ content: '対象はテキストチャンネルにしてください。', ephemeral: true });
+      return;
+    }
+
+    if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageMessages)) {
+      await interaction.reply({ content: 'メッセージ管理権限がありません。', ephemeral: true });
+      return;
+    }
+
+    const botMember = interaction.guild.members.me;
+    const botPerms = channel.permissionsFor(botMember);
+    if (!botPerms || !botPerms.has(PermissionsBitField.Flags.ManageMessages)) {
+      await interaction.reply({ content: 'Botにメッセージ管理権限がありません。', ephemeral: true });
+      return;
+    }
+
+    if (interaction.commandName === 'purge' && (!count || count < 1 || count > 1000)) {
+      await interaction.reply({ content: '削除数は1〜1000で指定してください。', ephemeral: true });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      let deletedTotal = 0;
+      const maxPerBatch = 100;
+      let remaining = interaction.commandName === 'purge' ? count : Number.MAX_SAFE_INTEGER;
+      let skippedOld = false;
+
+      while (remaining > 0) {
+        const batchSize = Math.min(maxPerBatch, remaining);
+        const messages = await channel.messages.fetch({ limit: batchSize });
+        if (messages.size === 0) break;
+        const deleted = await channel.bulkDelete(messages, true);
+        deletedTotal += deleted.size;
+        if (deleted.size < messages.size) skippedOld = true;
+        if (messages.size < batchSize) break;
+        remaining -= batchSize;
+        if (interaction.commandName === 'purgeall' && deleted.size === 0) break;
+      }
+
+      const suffix = skippedOld ? '（14日以上前のメッセージは削除できません）' : '';
+      await interaction.editReply(`削除完了: ${channel} から ${deletedTotal} 件削除しました。${suffix}`);
+    } catch (err) {
+      console.error('Failed to purge messages', err);
+      await interaction.editReply('メッセージ削除に失敗しました（権限/制限を確認してください）。');
     }
   }
 });
