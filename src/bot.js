@@ -1,9 +1,10 @@
 // Minimal Discord bot to create temporary voice rooms via /room command
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, Routes, REST, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Routes, REST, ChannelType, PermissionsBitField } = require('discord.js');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+const ALLOWED_ROLE_ID = '1463855695513522270';
 
 if (!TOKEN || !CLIENT_ID) {
   console.error('Missing DISCORD_TOKEN or CLIENT_ID in environment');
@@ -66,16 +67,33 @@ client.on('interactionCreate', async (interaction) => {
     const idle = interaction.options.getInteger('idle') ?? 1; // minutes
     const guildId = interaction.guildId;
     try {
+      const formattedName = `ーー 作業 - ${name} ーー`;
+
       // check if a category with the same name already exists
-      const existingCategory = interaction.guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name === name);
+      const existingCategory = interaction.guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name === formattedName);
       if (existingCategory) {
-        await interaction.reply({ content: `同名のカテゴリ "${name}" が既に存在します。別名を指定してください。`, ephemeral: true });
+        await interaction.reply({ content: `同名のカテゴリ "${formattedName}" が既に存在します。別名を指定してください。`, ephemeral: true });
         return;
       }
 
       // create a category and place paired channels inside it
-      const category = await interaction.guild.channels.create({ name, type: ChannelType.GuildCategory });
-      const voice = await interaction.guild.channels.create({ name, type: ChannelType.GuildVoice, parent: category.id });
+      const category = await interaction.guild.channels.create({
+        name: formattedName,
+        type: ChannelType.GuildCategory,
+        permissionOverwrites: [
+          { id: interaction.guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: ALLOWED_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel] }
+        ]
+      });
+      const voice = await interaction.guild.channels.create({
+        name: formattedName,
+        type: ChannelType.GuildVoice,
+        parent: category.id,
+        permissionOverwrites: [
+          { id: interaction.guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.Connect] },
+          { id: ALLOWED_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.Connect] }
+        ]
+      });
 
       // create paired temporary text channel inside the same category
       const textName = `${name}-chat`.slice(0, 100);
@@ -83,7 +101,7 @@ client.on('interactionCreate', async (interaction) => {
 
       // ensure array
       if (!guildRooms.has(guildId)) guildRooms.set(guildId, []);
-      const room = { channelId: voice.id, textId: text.id, creatorId: interaction.user.id, name };
+      const room = { channelId: voice.id, textId: text.id, creatorId: interaction.user.id, name: formattedName };
       guildRooms.get(guildId).push(room);
 
       // post timer message to paired text channel
