@@ -85,8 +85,10 @@ client.on('interactionCreate', async (interaction) => {
           { id: ALLOWED_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel] }
         ]
       });
+
+      const voiceName = `${name}`.slice(0, 100);
       const voice = await interaction.guild.channels.create({
-        name: formattedName,
+        name: voiceName,
         type: ChannelType.GuildVoice,
         parent: category.id,
         permissionOverwrites: [
@@ -209,3 +211,4 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 client.login(TOKEN);
+
