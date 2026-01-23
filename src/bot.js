@@ -12,7 +12,12 @@ if (!TOKEN || !CLIENT_ID) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ],
   partials: [Partials.Channel]
 });
 
@@ -216,6 +221,26 @@ client.on('interactionCreate', async (interaction) => {
       console.error('Failed to purge messages', err);
       await interaction.editReply('メッセージ削除に失敗しました（権限/制限を確認してください）。');
     }
+  }
+});
+
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+  if (!message.content) return;
+
+  const normalized = message.content.replace(/\s+/g, '').toLowerCase();
+  if (!normalized.includes('meshrendererがない')) return;
+
+  const guidance = [
+    'Mesh Rendererが見当たらない場合は、対象のGameObjectを選択してInspectorの「Add Component」から「Mesh Renderer」を追加してください。',
+    'モデルがSkinned Meshの場合は「Skinned Mesh Renderer」を使います。',
+    'Mesh Filterにメッシュが割り当てられているかも確認してください。'
+  ].join('\n');
+
+  try {
+    await message.reply(guidance);
+  } catch (err) {
+    console.error('Failed to reply to Mesh Renderer message', err);
   }
 });
 
